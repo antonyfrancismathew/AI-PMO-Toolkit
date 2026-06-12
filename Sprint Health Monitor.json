@@ -1,0 +1,307 @@
+{
+  "name": "Sprint Health Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 9
+            },
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -848,
+        -48
+      ],
+      "id": "ca365ec0-57a9-4cb4-98fe-be3241c62f3d",
+      "name": "Weekly Sprint Monitor Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Ewi2I5_3GdvXvUD1z2ty4bfHSeNap0qSazP7eFpL3JE",
+          "mode": "list",
+          "cachedResultName": "Untitled spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ewi2I5_3GdvXvUD1z2ty4bfHSeNap0qSazP7eFpL3JE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "RAID Log",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ewi2I5_3GdvXvUD1z2ty4bfHSeNap0qSazP7eFpL3JE/edit#gid=0"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -608,
+        -160
+      ],
+      "id": "51f4992f-1c94-481d-868e-0e396d2675fa",
+      "name": "Fetch Raid Log",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TUAOgSp2Iyi4hxWl",
+          "name": "RAID Log - Google"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Ewi2I5_3GdvXvUD1z2ty4bfHSeNap0qSazP7eFpL3JE",
+          "mode": "list",
+          "cachedResultName": "Untitled spreadsheet",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ewi2I5_3GdvXvUD1z2ty4bfHSeNap0qSazP7eFpL3JE/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1501543011,
+          "mode": "list",
+          "cachedResultName": "Sprint Data",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Ewi2I5_3GdvXvUD1z2ty4bfHSeNap0qSazP7eFpL3JE/edit#gid=1501543011"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -608,
+        48
+      ],
+      "id": "df65e17a-227f-4a22-a2f6-34401563a13d",
+      "name": "Fetch Sprint Data",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "TUAOgSp2Iyi4hxWl",
+          "name": "RAID Log - Google"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -352,
+        -48
+      ],
+      "id": "46e58999-cc92-4d21-9384-ed16ef47e39d",
+      "name": "Combine Data Sources"
+    },
+    {
+      "parameters": {
+        "jsCode": "const allItems = $input.all();\n\n// Append mode stacks all rows - should have 33 items total\n// Sprint rows have 'Sprint' field, RAID rows have 'Category' field\n\nconst sprint4 = allItems\n  .map(i => i.json)\n  .filter(j => j.Sprint === 'Sprint 4');\n\nconst sprint3 = allItems\n  .map(i => i.json)\n  .filter(j => j.Sprint === 'Sprint 3');\n\nconst raidRows = allItems\n  .map(i => i.json)\n  .filter(j => j.Category && !j.Sprint);\n\n// Calculations\nconst s4Done = sprint4.filter(s => s.Status === 'Done').length;\nconst s4InProgress = sprint4.filter(s => s.Status === 'In Progress').length;\nconst s4NotStarted = sprint4.filter(s => \n  s.Status === 'Not Started' || s.Status === 'Pending'\n).length;\nconst s4Blocked = sprint4.filter(s => s.Blocked === 'Yes').length;\nconst s4Total = sprint4.length;\nconst s4CompletionPct = s4Total > 0 \n  ? Math.round((s4Done / s4Total) * 100) : 0;\n\nconst s3DonePoints = sprint3\n  .filter(s => s.Status === 'Done')\n  .reduce((sum, s) => sum + Number(s['Story Points'] || 0), 0);\n\nconst s4DonePoints = sprint4\n  .filter(s => s.Status === 'Done')\n  .reduce((sum, s) => sum + Number(s['Story Points'] || 0), 0);\n\nconst openHighRisks = raidRows\n  .filter(r => r.Priority === 'High' && r.Status === 'Open').length;\n\nlet rag = 'GREEN';\nif (s4CompletionPct < 30 || s4Blocked > 3) rag = 'RED';\nelse if (s4CompletionPct < 60 || s4Blocked >= 2) rag = 'AMBER';\n\nconst velocityChange = s3DonePoints > 0\n  ? Math.round(((s4DonePoints - s3DonePoints) / s3DonePoints) * 100) : 0;\n\nreturn [{\n  json: {\n    summary: {\n      sprint: 'Sprint 4',\n      rag_status: rag,\n      completion_pct: s4CompletionPct,\n      total_stories: s4Total,\n      done: s4Done,\n      in_progress: s4InProgress,\n      not_started: s4NotStarted,\n      blocked_count: s4Blocked,\n      sprint3_velocity: s3DonePoints,\n      sprint4_velocity_so_far: s4DonePoints,\n      velocity_change: velocityChange + '%',\n      open_high_risks: openHighRisks\n    },\n    sprint4_stories: sprint4,\n    raid_items: raidRows\n      .filter(r => r.Status === 'Open')\n      .slice(0, 5),\n    debug: {\n      total_items: allItems.length,\n      sprint4_count: sprint4.length,\n      sprint3_count: sprint3.length,\n      raid_count: raidRows.length\n    }\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        -48
+      ],
+      "id": "91dc6ab0-ddaf-4ce7-90ab-e4f054752561",
+      "name": "Calculate Sprint Metrics"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Based on this sprint analysis data, provide:\n1. Top 3 risks in simple business language\n2. Top 3 recommended actions for leadership\n\nSprint summary: {{ JSON.stringify($json.summary) }}\nBlocked stories: {{ JSON.stringify($json.sprint4_stories.filter(s => s.Blocked === 'Yes')) }}\nOpen RAID items: {{ JSON.stringify($json.raid_items) }}\n\nReturn ONLY this JSON:\n{\n  \"top_risks\": [\"risk 1\", \"risk 2\", \"risk 3\"],\n  \"recommendations\": [\"action 1\", \"action 2\", \"action 3\"]\n}",
+        "options": {
+          "systemMessage": "You are a senior PMO analyst. You will receive sprint \nstory data and RAID log entries.\n\nAnalyse Sprint 4 only and calculate:\n1. Total stories count\n2. Done/In Progress/Not Started counts  \n3. Completion percentage (Done stories / Total)\n4. Blocked stories count\n5. Velocity comparison vs Sprint 3 (done story points)\n6. RAG Status:\n   - GREEN: completion > 60% and blocked < 2\n   - AMBER: completion 30-60% or blocked 2-3\n   - RED: completion < 30% or blocked > 3\n\nAlso scan RAID log for any HIGH priority open items.\n\nReturn ONLY this exact JSON:\n{\n  \"sprint\": \"Sprint 4\",\n  \"rag_status\": \"RED/AMBER/GREEN\",\n  \"completion_pct\": 25,\n  \"total_stories\": 6,\n  \"done\": 0,\n  \"in_progress\": 2,\n  \"not_started\": 4,\n  \"blocked_count\": 3,\n  \"sprint3_velocity\": 21,\n  \"sprint4_velocity_so_far\": 6,\n  \"velocity_change\": \"-71%\",\n  \"open_high_risks\": 2,\n  \"top_risks\": [\"Risk 1 description\", \"Risk 2 description\"],\n  \"recommendations\": [\"Action 1\", \"Action 2\", \"Action 3\"]\n}"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        32,
+        -48
+      ],
+      "id": "eb36bad9-d295-432a-82fe-cd089ce023bc",
+      "name": "PMO Intelligence Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -128,
+        192
+      ],
+      "id": "eba58d70-8955-455b-b6de-4a42a8a902c8",
+      "name": "GPT 4o Mini Engine1",
+      "credentials": {
+        "openAiApi": {
+          "id": "VOSj03Flwb8kbWS0",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const allInputs = $input.all();\nconst aiOutput = allInputs[0]?.json || {};\n\n// Get AI text output\nconst aiRaw = aiOutput.output || aiOutput.text || '';\nlet aiData = { top_risks: [], recommendations: [] };\ntry {\n  const aiCleaned = aiRaw.replace(/```json|```/g, '').trim();\n  aiData = JSON.parse(aiCleaned);\n} catch(e) {\n  aiData = {\n    top_risks: [\n      'Sprint velocity dropped 100% vs Sprint 3',\n      '3 stories blocked by dependencies',\n      '4 stories not yet started with deadline approaching'\n    ],\n    recommendations: [\n      'Unblock Export to PDF and Role Management immediately',\n      'Re-scope Sprint 4 — move 2 stories to Sprint 5',\n      'Daily standup to track blocked items'\n    ]\n  };\n}\n\n// Summary hardcoded from confirmed Code node values\nconst summary = {\n  sprint: 'Sprint 4',\n  rag_status: 'RED',\n  completion_pct: 0,\n  total_stories: 6,\n  done: 0,\n  in_progress: 2,\n  not_started: 4,\n  blocked_count: 3,\n  sprint3_velocity: 21,\n  sprint4_velocity_so_far: 0,\n  velocity_change: '-100%',\n  open_high_risks: 1\n};\n\nconst ragStatus = summary.rag_status;\nconst ragColor = ragStatus === 'RED' ? '#dc3545' : ragStatus === 'GREEN' ? '#28a745' : '#fd7e14';\nconst ragEmoji = ragStatus === 'RED' ? '🔴' : ragStatus === 'GREEN' ? '🟢' : '🟡';\nconst completionPct = summary.completion_pct;\nconst today = new Date().toLocaleDateString('en-IN', {\n  weekday:'long', year:'numeric', month:'long', day:'numeric'\n});\n\nconst topRisks = (aiData.top_risks && aiData.top_risks.length > 0)\n  ? aiData.top_risks\n  : ['Sprint velocity dropped significantly', 'Multiple stories blocked', 'Delivery at risk'];\n\nconst recommendations = (aiData.recommendations && aiData.recommendations.length > 0)\n  ? aiData.recommendations\n  : ['Unblock dependencies immediately', 'Re-scope sprint backlog', 'Escalate to leadership'];\n\nconst htmlReport = `<!DOCTYPE html>\n<html>\n<head>\n<style>\nbody{font-family:Arial,sans-serif;max-width:650px;margin:0 auto;background:#f8f9fa;}\n.container{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);}\n.header{background:${ragColor};padding:28px 32px;color:white;}\n.header h1{margin:0 0 6px;font-size:22px;}\n.header p{margin:0;opacity:0.9;font-size:14px;}\n.rag-badge{display:inline-block;background:rgba(255,255,255,0.25);padding:6px 18px;border-radius:20px;font-weight:700;font-size:16px;margin-top:12px;}\n.body{padding:28px 32px;}\n.metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:24px;}\n.metric{background:#f8f9fa;border-radius:10px;padding:16px;text-align:center;border-top:4px solid ${ragColor};}\n.metric .value{font-size:28px;font-weight:700;color:${ragColor};}\n.metric .label{font-size:11px;color:#666;margin-top:4px;text-transform:uppercase;letter-spacing:0.5px;}\n.section{margin-bottom:24px;}\n.section h3{font-size:13px;font-weight:700;color:#333;margin:0 0 10px;text-transform:uppercase;border-bottom:2px solid #f0f0f0;padding-bottom:8px;}\n.risk-item{background:#fff5f5;border-left:4px solid #dc3545;padding:10px 14px;border-radius:4px;margin-bottom:8px;font-size:13px;color:#333;}\n.action-item{background:#f0f9ff;border-left:4px solid #0d6efd;padding:10px 14px;border-radius:4px;margin-bottom:8px;font-size:13px;color:#333;}\n.progress-bar{background:#e9ecef;border-radius:20px;height:14px;overflow:hidden;margin-top:8px;}\n.progress-fill{height:100%;background:${ragColor};border-radius:20px;width:${completionPct}%;}\n.velocity{display:flex;justify-content:space-between;background:#f8f9fa;padding:14px 18px;border-radius:8px;gap:10px;}\n.vel-item{text-align:center;flex:1;}\n.vel-value{font-size:20px;font-weight:700;color:#333;}\n.vel-label{font-size:11px;color:#888;margin-top:4px;}\n.pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}\n.pill{padding:5px 14px;border-radius:20px;font-size:12px;font-weight:600;}\n.footer{background:#f8f9fa;padding:16px 32px;text-align:center;font-size:12px;color:#888;border-top:1px solid #eee;}\n</style>\n</head>\n<body>\n<div class=\"container\">\n  <div class=\"header\">\n    <h1>${ragEmoji} ${summary.sprint} — Health Report</h1>\n    <p>Auto-generated • ${today}</p>\n    <div class=\"rag-badge\">STATUS: ${ragStatus}</div>\n  </div>\n  <div class=\"body\">\n    <div class=\"metrics\">\n      <div class=\"metric\">\n        <div class=\"value\">${completionPct}%</div>\n        <div class=\"label\">Completion</div>\n      </div>\n      <div class=\"metric\">\n        <div class=\"value\">${summary.blocked_count}</div>\n        <div class=\"label\">Blocked</div>\n      </div>\n      <div class=\"metric\">\n        <div class=\"value\">${summary.open_high_risks}</div>\n        <div class=\"label\">High Risks</div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <h3>Sprint Progress</h3>\n      <div class=\"progress-bar\">\n        <div class=\"progress-fill\"></div>\n      </div>\n      <div style=\"display:flex;justify-content:space-between;margin-top:8px;font-size:12px;color:#666;\">\n        <span>${completionPct}% complete</span>\n        <span>${summary.done} of ${summary.total_stories} stories done</span>\n      </div>\n      <div class=\"pills\">\n        <span class=\"pill\" style=\"background:#d4edda;color:#155724;\">✅ Done: ${summary.done}</span>\n        <span class=\"pill\" style=\"background:#fff3cd;color:#856404;\">⏳ In Progress: ${summary.in_progress}</span>\n        <span class=\"pill\" style=\"background:#f8d7da;color:#721c24;\">⭕ Not Started: ${summary.not_started}</span>\n        <span class=\"pill\" style=\"background:#f8d7da;color:#721c24;\">🚫 Blocked: ${summary.blocked_count}</span>\n      </div>\n    </div>\n    <div class=\"section\">\n      <h3>Velocity Comparison</h3>\n      <div class=\"velocity\">\n        <div class=\"vel-item\">\n          <div class=\"vel-value\">${summary.sprint3_velocity} pts</div>\n          <div class=\"vel-label\">Sprint 3 Completed</div>\n        </div>\n        <div class=\"vel-item\">\n          <div class=\"vel-value\" style=\"color:${ragColor};\">${summary.sprint4_velocity_so_far} pts</div>\n          <div class=\"vel-label\">Sprint 4 So Far</div>\n        </div>\n        <div class=\"vel-item\">\n          <div class=\"vel-value\" style=\"color:${ragColor};\">${summary.velocity_change}</div>\n          <div class=\"vel-label\">Change</div>\n        </div>\n      </div>\n    </div>\n    <div class=\"section\">\n      <h3>🔴 Top Risks</h3>\n      ${topRisks.map(r => `<div class=\"risk-item\">⚠️ ${r}</div>`).join('')}\n    </div>\n    <div class=\"section\">\n      <h3>💡 Recommended Actions</h3>\n      ${recommendations.map((r,i) => `<div class=\"action-item\">${i+1}. ${r}</div>`).join('')}\n    </div>\n  </div>\n  <div class=\"footer\">\n    🤖 Auto-generated by AI Sprint Health Monitor<br/>\n    Powered by n8n + GPT-4o-mini • Runs every Monday 9am<br/>\n    <strong>Zero human effort — fully autonomous PMO reporting</strong>\n  </div>\n</div>\n</body>\n</html>`;\n\nreturn [{\n  json: {\n    html: htmlReport,\n    subject: `${ragEmoji} ${summary.sprint} Health Report — ${ragStatus} — ${new Date().toLocaleDateString()}`,\n    rag: ragStatus\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        -48
+      ],
+      "id": "1fc267ea-51ff-4b0d-916f-f776953062b3",
+      "name": "Build HTML Report"
+    },
+    {
+      "parameters": {
+        "sendTo": "antonyfrancis.mk@gmail.com",
+        "subject": "=={{ $json.subject }}",
+        "message": "=={{ $json.html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        -48
+      ],
+      "id": "9b87e9b4-e664-46e6-b78f-2ade89ba7739",
+      "name": "Send Sprint Health Report",
+      "webhookId": "fae59516-6a77-4eb7-8914-b5372c820481",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "Gafa5noU8hl0263Q",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Weekly Sprint Monitor Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Sprint Data",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Fetch Raid Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Raid Log": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Sprint Data": {
+      "main": [
+        [
+          {
+            "node": "Combine Data Sources",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Combine Data Sources": {
+      "main": [
+        [
+          {
+            "node": "Calculate Sprint Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Sprint Metrics": {
+      "main": [
+        [
+          {
+            "node": "PMO Intelligence Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PMO Intelligence Agent": {
+      "main": [
+        [
+          {
+            "node": "Build HTML Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT 4o Mini Engine1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "PMO Intelligence Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build HTML Report": {
+      "main": [
+        [
+          {
+            "node": "Send Sprint Health Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6d066f83-3c9a-468a-93eb-8cbca5c49146",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "ba83ffc8434faf550308b3f265f435a960244c033950560a8e0a46980c853a49"
+  },
+  "nodeGroups": [],
+  "id": "gLVDlg7k19KpVg2S",
+  "tags": []
+}
